@@ -17,7 +17,7 @@ LATS operates through four main steps:
 
 Below is a high-level representation of LATS 
 
-
+![LATS Overview](./lats.png)
 
 ## Jupyter Notebook
 
