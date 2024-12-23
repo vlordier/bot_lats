@@ -19,6 +19,15 @@ Below is a high-level representation of LATS
 
 ![LATS Overview](./lats.png)
 
+## Implementation Details
+
+The LATS implementation uses:
+
+- Asynchronous parallel simulation of multiple trajectories
+- Full MCTS with selection, expansion, simulation, and backpropagation
+- Normalized evaluation scores for proper value propagation
+- Configurable branching factor and exploration parameters
+
 ## Jupyter Notebook
 
 For a detailed tutorial and examples, please refer to the [LATS Jupyter Notebook](https://github.com/langchain-ai/langgraph/blob/main/docs/docs/tutorials/lats/lats.ipynb).
