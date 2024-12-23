@@ -16,7 +16,7 @@ LATS operates through four main steps:
 4. **Backpropagate**: Update the scores of the root trajectories based on the outcomes.
 
 Below is a high-level representation of LATS 
-[lats](lats.png)
+
 
 
 ## Jupyter Notebook
