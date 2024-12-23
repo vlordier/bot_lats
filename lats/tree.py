@@ -1,9 +1,11 @@
-from typing import Optional, List, Dict, Any, cast
+from typing import Optional, List, Dict, Any
 from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage
-from pydantic import BaseModel, Field, model_validator, ConfigDict
 import math
 import asyncio
+import logging
+from langchain_core.messages import BaseMessage
+from pydantic import BaseModel, Field, model_validator, ConfigDict
+
 from contextlib import asynccontextmanager
 from .reflection_utils import Reflection
 
@@ -46,7 +48,7 @@ class MCTSNode(BaseModel):
     messages: List[BaseMessage]
     reflection: Reflection
     stats: NodeStats = Field(default_factory=NodeStats)
-    parent: Optional["MCTSNode"] = None
+    parent: Optional["MCTSNode"]
     children: List["MCTSNode"] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -109,13 +111,14 @@ class MCTSNode(BaseModel):
         """Select most promising node for expansion."""
         current = root
         while current.children:
-            best_child = cast(
-                MCTSNode,
-                max(current.children, key=lambda c: c.upper_confidence_bound()),
-            )
-            if best_child is current:  # This can't happen now, but keeps mypy happy
+            try:
+                children = [c for c in current.children if c is not None]
+                if not children:
+                    break
+                best_child = max(children, key=lambda c: c.upper_confidence_bound())
+                current = best_child
+            except ValueError:
                 break
-            current = best_child
         return current
 
     def get_best_solution(self) -> "MCTSNode":
@@ -167,7 +170,11 @@ class MCTSNode(BaseModel):
         """Enhanced simulation with actual response generation."""
         async with self._simulation_context() as ctx:
             try:
-                return await self._run_simulation(state, config, ctx)
+                timeout = getattr(config, "timeout", 30.0)
+                result = await asyncio.wait_for(
+                    self._run_simulation(state, config, ctx), timeout=timeout
+                )
+                return result
             except asyncio.TimeoutError:
                 return SimulationResult(
                     value=self.value * config.decay_factor,
@@ -175,7 +182,7 @@ class MCTSNode(BaseModel):
                     terminated_early=True,
                 )
             except Exception as e:
-                self.logger.error(f"Simulation failed: {e}")
+                logging.error(f"Simulation failed: {str(e)}")
                 return SimulationResult(
                     value=0.0, depth_reached=0, terminated_early=True
                 )
@@ -219,7 +226,9 @@ class MCTSNode(BaseModel):
             selected.backpropagate(value)
 
         best_child = selected.select_best_child()
-        return selected if best_child is None else best_child
+        if best_child is None:
+            return selected
+        return best_child
 
 
 class SearchState(TypedDict):

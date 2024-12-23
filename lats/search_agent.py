@@ -67,7 +67,13 @@ class LATSAgent:
     async def async_search(self, request: SearchRequest) -> Dict[str, Any]:
         """Asynchronous version of search method."""
         try:
-            return await asyncio.to_thread(self.search, request)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.search, request), timeout=self.config.timeout
+            )
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error("Search timed out")
+            return {"error": "Search timed out"}
         except Exception as e:
             self.logger.error(f"Async search failed: {str(e)}")
             return {"error": f"Async search failed: {str(e)}"}
@@ -91,42 +97,37 @@ class LATSAgent:
         root = state["root"]
         depth = root.height
 
-        # Generate candidates
         candidates = await root.get_candidate_nodes(state["query"])
+        temp = 0.7 * (0.8**depth)
+        config_dict = {**config, "temperature": temp}
 
-        # Adjust temperature based on depth
-        temp = 0.7 * (0.8**depth)  # Using default temperature scaling
-        config = {**config, "temperature": temp}
-
-        # Create processing batches
         batch_size = min(getattr(config, "max_concurrent", 5), len(candidates))
         batches = [
             candidates[i : i + batch_size]
             for i in range(0, len(candidates), batch_size)
         ]
 
-        # Process batches and collect evaluations
         child_nodes = []
         evaluations = []
 
         for batch in batches:
-            # Process each batch in parallel
             tasks = [
-                expansion_chain.ainvoke(
-                    {"messages": node.messages, "query": state["query"]}, config=config
+                expansion_chain(
+                    {
+                        "messages": node.messages,
+                        "query": state["query"],
+                        "config": config_dict,
+                    }
                 )
                 for node in batch
             ]
-
             batch_results = await asyncio.gather(*tasks)
 
-            # Add successful expansions to children
             for node, result in zip(batch, batch_results):
                 if result.success:
                     child_nodes.append(node)
                     evaluations.append(result.reflection)
 
-        # Backpropagate results
         for node, evaluation in zip(child_nodes, evaluations):
             node.backpropagate(evaluation.normalized_score)
 
